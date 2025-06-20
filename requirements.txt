@@ -1,0 +1,8 @@
+streamlit
+requests
+beautifulsoup4
+lxml
+pandas
+# Selenium利用時は以下を追加
+# selenium
+# webdriver-manager
