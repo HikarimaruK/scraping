@@ -4,12 +4,12 @@ import random
 from crawler import fetch_list_page, extract_detail_urls, fetch_detail_page, extract_elements
 from utils import results_to_csv
 
-st.set_page_config(page_title="誰でも使えるWebクローリングツール", layout="wide")
-st.title("誰でも使えるWebクローリングツール")
+st.set_page_config(page_title="万能スクレイピングツール", layout="wide")
+st.title("万能スクレイピングツール")
 
-st.markdown("### クロール条件を入力してください")
+st.markdown("### スクレイピング条件を入力してください")
 list_url = st.text_input("一覧ページURL（<<PAGE>>でページ番号を指定）", "https://example.com/list?page=<<PAGE>>")
-num_pages = st.number_input("クロールする一覧ページ数（例: 5 → 5ページ分の全詳細ページをクロール）", min_value=1, max_value=100, value=5)
+num_pages = st.number_input("スクレイピングする一覧ページ数（例: 5 → 5ページ分の全詳細ページをスクレイピング）", min_value=1, max_value=100, value=5)
 detail_selector = st.text_input("詳細ページURL抽出用CSSセレクタ（<<NUM>>で可変指定可）", "div.card > a")
 
 # <<NUM>>が含まれている場合のみ範囲入力欄を表示
@@ -44,13 +44,13 @@ def get_session_state():
         st.session_state['columns'] = []
 get_session_state()
 
-submitted = st.button("クロール開始")
+submitted = st.button("スクレイピング開始")
 
 progress_text = st.empty()
 progress_bar = st.progress(0)
 
 if submitted:
-    st.info("クロールを開始します。しばらくお待ちください。")
+    st.info("スクレイピングを開始します。しばらくお待ちください。")
     results = []
     error_count = 0
     detail_urls_set = set()
@@ -92,7 +92,7 @@ if submitted:
                 total_detail_count += 1
                 progress_bar.progress(min(1.0, (total_detail_count / (num_pages * max(1, len(detail_urls))))))
                 time.sleep(random.uniform(1, 2))  # 1～2秒ランダムスリープ
-        st.success(f"クロール完了！取得件数: {len(results)} / エラー: {error_count}")
+        st.success(f"スクレイピング完了！取得件数: {len(results)} / エラー: {error_count}")
         if results:
             columns = ["詳細ページURL"] + [s["name"] for s in selectors]
             csv_bytes = results_to_csv(results, columns)
@@ -109,14 +109,13 @@ display_results = st.session_state.get('results', [])
 display_csv = st.session_state.get('csv_bytes', None)
 display_columns = st.session_state.get('columns', [])
 if display_results and display_csv and display_columns:
-    st.download_button("CSVダウンロード", data=display_csv, file_name="crawl_results.csv", mime="text/csv")
+    st.download_button("CSVダウンロード", data=display_csv, file_name="scraping_results.csv", mime="text/csv")
     st.dataframe(display_results)
 
 st.markdown("""
 ---
-#### 📝 補足・拡張ポイント
-- JavaScriptレンダリングが必要な場合は、`crawler.py`の`fetch_list_page`/`fetch_detail_page`をSelenium実装に差し替え可能です。
-- XPath対応は`extract_elements`関数に`lxml`や`parsel`を使って追加できます。
-- 例外処理やリトライ、User-Agent指定、プロキシ対応なども拡張可能です。
-- サンプルテストは`crawler.py`の`__main__`ブロックを参照してください。
+#### 補足
+- 一覧ページURLのページ番号部分は `<<PAGE>>` で指定できます（例: `https://example.com/list?page=<<PAGE>>`）。
+- 詳細ページURL抽出用CSSセレクタで `<<NUM>>` を使うと、繰り返し部分の番号を変数化できます。
+- 各要素のCSSセレクタも、繰り返し部分やパターンに応じて `nth-child(<<NUM>>)` などで柔軟に指定できます。
 """)
