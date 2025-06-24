@@ -1,10 +1,10 @@
 import streamlit as st
 import time
 import random
-import threading
+import pandas as pd
 from crawler import fetch_list_page, extract_detail_urls, fetch_detail_page, extract_elements
 from utils import results_to_csv
-import pandas as pd
+import base64
 
 st.set_page_config(page_title="万能スクレイピングツール", layout="wide")
 st.title("万能スクレイピングツール")
@@ -48,25 +48,15 @@ if 'stop_flag' not in st.session_state:
 if 'detail_urls' not in st.session_state:
     st.session_state['detail_urls'] = []
 
-# スクレイピング中断用
-stop_placeholder = st.empty()
-
-# コピーボタン用
-copy_placeholder = st.empty()
-
-submitted = st.button("スクレイピング開始")
-
+# 進捗・メッセージ用
 progress_text = st.empty()
 progress_bar = st.progress(0)
 
-# スクレイピング中断ボタン
-stop_clicked = stop_placeholder.button("スクレイピング中止", key="stop_btn", disabled=not submitted)
-if stop_clicked:
-    st.session_state['stop_flag'] = True
-    progress_text.info("スクレイピングを中止しました。")
+# スクレイピング開始ボタン
+submitted = st.button("スクレイピング開始")
 
 # スクレイピング本体
-if submitted and not st.session_state['stop_flag']:
+if submitted:
     st.session_state['results'] = []
     st.session_state['csv_bytes'] = None
     st.session_state['columns'] = []
@@ -147,8 +137,6 @@ if submitted and not st.session_state['stop_flag']:
             st.warning("データが取得できませんでした。")
 
 # 結果があれば常にプレビューとダウンロード・コピーボタンを表示
-import base64
-
 def get_table_download_link(df):
     csv = df.to_csv(index=False, sep='\t', encoding='utf-8-sig')
     b64 = base64.b64encode(csv.encode()).decode()
@@ -163,9 +151,15 @@ def copy_to_clipboard_button(df):
 if st.session_state.get('results', []) and st.session_state.get('columns', []):
     df = pd.DataFrame(st.session_state['results'], columns=st.session_state['columns'])
     st.download_button("CSVダウンロード", data=st.session_state['csv_bytes'], file_name="scraping_results.csv", mime="text/csv")
-    copy_placeholder.markdown(get_table_download_link(df), unsafe_allow_html=True)
+    st.markdown(get_table_download_link(df), unsafe_allow_html=True)
     copy_to_clipboard_button(df)
     st.dataframe(df)
+
+# スクレイピング中断ボタン（開始ボタンの下に表示）
+if submitted or (st.session_state.get('results', []) and not st.session_state['stop_flag']):
+    if st.button("スクレイピング中止", key="stop_btn"):
+        st.session_state['stop_flag'] = True
+        progress_text.info("スクレイピングを中止しました。")
 
 st.markdown("""
 ---

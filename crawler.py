@@ -26,7 +26,11 @@ def fetch_list_page(url: str, use_selenium: bool = False, driver=None) -> Option
     return html
 
 def extract_detail_urls(list_html: str, detail_selector: str, base_url: str = "") -> List[str]:
-    soup = BeautifulSoup(list_html, "lxml")
+    # lxmlが使えない場合はhtml.parserでフォールバック
+    try:
+        soup = BeautifulSoup(list_html, "lxml")
+    except Exception:
+        soup = BeautifulSoup(list_html, "html.parser")
     links = []
     # まず指定セレクタでタグを取得
     tags = soup.select(detail_selector)
