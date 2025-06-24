@@ -1,8 +1,10 @@
 import streamlit as st
 import time
 import random
+import threading
 from crawler import fetch_list_page, extract_detail_urls, fetch_detail_page, extract_elements
 from utils import results_to_csv
+import pandas as pd
 
 st.set_page_config(page_title="万能スクレイピングツール", layout="wide")
 st.title("万能スクレイピングツール")
@@ -35,64 +37,106 @@ for i in range(element_count):
     selectors.append({"name": name, "selector": selector, "type": "css"})
 
 # セッションステートで結果とCSVを保持
-def get_session_state():
-    if 'results' not in st.session_state:
-        st.session_state['results'] = []
-    if 'csv_bytes' not in st.session_state:
-        st.session_state['csv_bytes'] = None
-    if 'columns' not in st.session_state:
-        st.session_state['columns'] = []
-get_session_state()
+if 'results' not in st.session_state:
+    st.session_state['results'] = []
+if 'csv_bytes' not in st.session_state:
+    st.session_state['csv_bytes'] = None
+if 'columns' not in st.session_state:
+    st.session_state['columns'] = []
+if 'stop_flag' not in st.session_state:
+    st.session_state['stop_flag'] = False
+if 'detail_urls' not in st.session_state:
+    st.session_state['detail_urls'] = []
+
+# スクレイピング中断用
+stop_placeholder = st.empty()
+
+# コピーボタン用
+copy_placeholder = st.empty()
 
 submitted = st.button("スクレイピング開始")
 
 progress_text = st.empty()
 progress_bar = st.progress(0)
 
-if submitted:
-    st.info("スクレイピングを開始します。しばらくお待ちください。")
+# スクレイピング中断ボタン
+stop_clicked = stop_placeholder.button("スクレイピング中止", key="stop_btn", disabled=not submitted)
+if stop_clicked:
+    st.session_state['stop_flag'] = True
+    progress_text.info("スクレイピングを中止しました。")
+
+# スクレイピング本体
+if submitted and not st.session_state['stop_flag']:
+    st.session_state['results'] = []
+    st.session_state['csv_bytes'] = None
+    st.session_state['columns'] = []
+    st.session_state['detail_urls'] = []
+    st.session_state['stop_flag'] = False
     results = []
     error_count = 0
     detail_urls_set = set()
-    total_detail_count = 0
-    try:
-        for page in range(1, num_pages + 1):
-            page_url = list_url.replace("<<PAGE>>", str(page))
-            progress_text.markdown(f"<span style='color:blue'>一覧ページ取得中: {page_url}</span>", unsafe_allow_html=True)
-            list_html = fetch_list_page(page_url)
-            if not list_html:
-                st.warning(f"一覧ページ取得失敗: {page_url}")
+    all_detail_urls = []
+    # 1. 一覧ページ全取得→詳細URLリスト作成
+    progress_text.info("一覧ページをクロール中...（準備中）")
+    for page in range(1, num_pages + 1):
+        if st.session_state['stop_flag']:
+            break
+        page_url = list_url.replace("<<PAGE>>", str(page))
+        list_html = fetch_list_page(page_url)
+        if not list_html:
+            st.warning(f"一覧ページ取得失敗: {page_url}")
+            error_count += 1
+            continue
+        # セレクタ生成
+        selectors_to_use = []
+        if "<<NUM>>" in detail_selector and num_range_start is not None and num_range_end is not None:
+            for n in range(int(num_range_start), int(num_range_end) + 1):
+                selectors_to_use.append(detail_selector.replace("<<NUM>>", str(n)))
+        else:
+            selectors_to_use = [detail_selector]
+        # 各セレクタで詳細URL抽出
+        for sel in selectors_to_use:
+            detail_urls = extract_detail_urls(list_html, sel, base_url=page_url.split("/list")[0])
+            for d_url in detail_urls:
+                if d_url not in detail_urls_set:
+                    detail_urls_set.add(d_url)
+                    all_detail_urls.append(d_url)
+    st.session_state['detail_urls'] = all_detail_urls
+    total_detail_count = len(all_detail_urls)
+    if st.session_state['stop_flag']:
+        progress_text.info("スクレイピングを中止しました。")
+    elif total_detail_count == 0:
+        progress_text.warning("詳細ページURLが取得できませんでした。条件を見直してください。")
+    else:
+        # 2. 詳細ページ一括クロール
+        progress_text.info(f"詳細ページをクロール中...（{total_detail_count}件）")
+        for idx, d_url in enumerate(all_detail_urls):
+            if st.session_state['stop_flag']:
+                break
+            progress_text.markdown(f"<span style='color:green'>詳細ページ取得中: {d_url} ({idx+1}/{total_detail_count})</span>", unsafe_allow_html=True)
+            d_html = fetch_detail_page(d_url)
+            if not d_html:
+                st.warning(f"詳細ページ取得失敗: {d_url}")
                 error_count += 1
                 continue
-            # セレクタ生成
-            selectors_to_use = []
-            if "<<NUM>>" in detail_selector and num_range_start is not None and num_range_end is not None:
-                for n in range(int(num_range_start), int(num_range_end) + 1):
-                    selectors_to_use.append(detail_selector.replace("<<NUM>>", str(n)))
-            else:
-                selectors_to_use = [detail_selector]
-            # 各セレクタで詳細URL抽出
-            detail_urls = []
-            for sel in selectors_to_use:
-                detail_urls += extract_detail_urls(list_html, sel, base_url=page_url.split("/list")[0])
-            for idx, d_url in enumerate(detail_urls):
-                if d_url in detail_urls_set:
-                    continue
-                detail_urls_set.add(d_url)
-                progress_text.markdown(f"<span style='color:green'>詳細ページ取得中: {d_url} ({len(results)+1}件目)</span>", unsafe_allow_html=True)
-                d_html = fetch_detail_page(d_url)
-                if not d_html:
-                    st.warning(f"詳細ページ取得失敗: {d_url}")
-                    error_count += 1
-                    continue
-                elements = extract_elements(d_html, selectors)
-                row = {"詳細ページURL": d_url}
-                row.update(elements)
-                results.append(row)
-                total_detail_count += 1
-                progress_bar.progress(min(1.0, (total_detail_count / (num_pages * max(1, len(detail_urls))))))
-                time.sleep(random.uniform(1, 2))  # 1～2秒ランダムスリープ
-        st.success(f"スクレイピング完了！取得件数: {len(results)} / エラー: {error_count}")
+            elements = extract_elements(d_html, selectors)
+            row = {"詳細ページURL": d_url}
+            row.update(elements)
+            results.append(row)
+            # 進捗バー更新
+            progress_bar.progress(min(1.0, (idx+1)/total_detail_count))
+            # 結果を即時反映
+            st.session_state['results'] = results.copy()
+            columns = ["詳細ページURL"] + [s["name"] for s in selectors]
+            st.session_state['columns'] = columns
+            df = pd.DataFrame(results, columns=columns)
+            st.dataframe(df)
+            time.sleep(random.uniform(1, 2))  # 1～2秒ランダムスリープ
+        # 完了処理
+        if st.session_state['stop_flag']:
+            progress_text.info(f"スクレイピングを中止しました。取得件数: {len(results)} / エラー: {error_count}")
+        else:
+            progress_text.success(f"スクレイピング完了！取得件数: {len(results)} / エラー: {error_count}")
         if results:
             columns = ["詳細ページURL"] + [s["name"] for s in selectors]
             csv_bytes = results_to_csv(results, columns)
@@ -101,16 +145,27 @@ if submitted:
             st.session_state['columns'] = columns
         else:
             st.warning("データが取得できませんでした。")
-    except Exception as e:
-        st.error(f"エラーが発生しました: {e}")
 
-# 結果があれば常にプレビューとダウンロードボタンを表示
-display_results = st.session_state.get('results', [])
-display_csv = st.session_state.get('csv_bytes', None)
-display_columns = st.session_state.get('columns', [])
-if display_results and display_csv and display_columns:
-    st.download_button("CSVダウンロード", data=display_csv, file_name="scraping_results.csv", mime="text/csv")
-    st.dataframe(display_results)
+# 結果があれば常にプレビューとダウンロード・コピーボタンを表示
+import base64
+
+def get_table_download_link(df):
+    csv = df.to_csv(index=False, sep='\t', encoding='utf-8-sig')
+    b64 = base64.b64encode(csv.encode()).decode()
+    return f'<a href="data:text/csv;base64,{b64}" download="scraping_results.tsv">コピー用TSVダウンロード</a>'
+
+def copy_to_clipboard_button(df):
+    csv = df.to_csv(index=False, sep='\t', encoding='utf-8-sig')
+    st.code(csv, language='text')
+    st.markdown("<span style='color:gray'>上記を全選択してコピーできます（Excel/スプレッドシート貼付用）</span>", unsafe_allow_html=True)
+
+# 表示
+if st.session_state.get('results', []) and st.session_state.get('columns', []):
+    df = pd.DataFrame(st.session_state['results'], columns=st.session_state['columns'])
+    st.download_button("CSVダウンロード", data=st.session_state['csv_bytes'], file_name="scraping_results.csv", mime="text/csv")
+    copy_placeholder.markdown(get_table_download_link(df), unsafe_allow_html=True)
+    copy_to_clipboard_button(df)
+    st.dataframe(df)
 
 st.markdown("""
 ---
