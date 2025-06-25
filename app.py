@@ -54,31 +54,47 @@ if 'scraping' not in st.session_state:
 progress_text = st.empty()
 progress_bar = st.progress(0)
 
-# スクレイピング開始/終了ボタンの制御
-scraping = st.session_state['scraping']
-stop_flag = st.session_state['stop_flag']
-
 # ボタン表示
 start_placeholder = st.empty()
 stop_placeholder = st.empty()
 
-if not st.session_state['scraping']:
-    if start_placeholder.button("スクレイピング開始", key="start_btn"):
-        st.session_state['scraping'] = True
-        st.session_state['stop_flag'] = False
-        st.session_state['results'] = []
-        st.session_state['csv_bytes'] = None
-        st.session_state['columns'] = []
-        st.session_state['detail_urls'] = []
-        st.session_state['latest_df'] = pd.DataFrame()
+# 状態管理
+scraping = st.session_state['scraping']
+stop_flag = st.session_state['stop_flag']
+
+# ボタン制御
+start_clicked = False
+stop_clicked = False
+
+if not scraping:
+    with start_placeholder:
+        start_clicked = st.button("スクレイピング開始", key="start_btn")
+    stop_placeholder.empty()
 else:
-    if stop_placeholder.button("スクレイピング終了", key="stop_btn"):
-        st.session_state['stop_flag'] = True
-        st.session_state['scraping'] = False
+    start_placeholder.empty()
+    with stop_placeholder:
+        stop_clicked = st.button("スクレイピング終了", key="stop_btn")
+
+# スクレイピング開始
+if start_clicked and not scraping:
+    st.session_state['scraping'] = True
+    st.session_state['stop_flag'] = False
+    st.session_state['results'] = []
+    st.session_state['csv_bytes'] = None
+    st.session_state['columns'] = []
+    st.session_state['detail_urls'] = []
+    st.session_state['latest_df'] = pd.DataFrame()
+    st.experimental_rerun()
+
+# スクレイピング終了
+if stop_clicked and scraping:
+    st.session_state['stop_flag'] = True
+    st.session_state['scraping'] = False
+    st.experimental_rerun()
 
 # スクレイピング本体
-if st.session_state['scraping'] and not st.session_state['stop_flag']:
-    results = st.session_state.get('results', [])
+if scraping and not stop_flag:
+    results = []
     error_count = 0
     detail_urls_set = set()
     all_detail_urls = []
@@ -107,10 +123,22 @@ if st.session_state['scraping'] and not st.session_state['stop_flag']:
     st.session_state['detail_urls'] = all_detail_urls
     total_detail_count = len(all_detail_urls)
     if st.session_state['stop_flag']:
+        # 準備中で中止→何も出さない
+        st.session_state['results'] = []
+        st.session_state['csv_bytes'] = None
+        st.session_state['columns'] = []
+        st.session_state['latest_df'] = pd.DataFrame()
         progress_text.info("スクレイピングを中止しました。")
+        st.session_state['scraping'] = False
+        st.session_state['stop_flag'] = False
+        st.experimental_rerun()
     elif total_detail_count == 0:
         progress_text.warning("詳細ページURLが取得できませんでした。条件を見直してください。")
+        st.session_state['scraping'] = False
+        st.session_state['stop_flag'] = False
     else:
+        # 詳細ページクロール
+        results = []
         progress_text.info(f"詳細ページをクロール中...（{total_detail_count}件）")
         for idx, d_url in enumerate(all_detail_urls):
             if st.session_state['stop_flag']:
@@ -131,20 +159,18 @@ if st.session_state['scraping'] and not st.session_state['stop_flag']:
             df = pd.DataFrame(results, columns=columns)
             st.session_state['latest_df'] = df
             st.session_state['csv_bytes'] = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+            progress_bar.progress(min(1.0, (idx+1)/total_detail_count))
+            st.dataframe(df, key="latest_result_table")
+            time.sleep(random.uniform(1, 2))
+        # 完了処理
         if st.session_state['stop_flag']:
             progress_text.info(f"スクレイピングを中止しました。取得件数: {len(results)} / エラー: {error_count}")
         else:
             progress_text.success(f"スクレイピング完了！取得件数: {len(results)} / エラー: {error_count}")
-        if results:
-            columns = ["詳細ページURL"] + [s["name"] for s in selectors]
-            df = pd.DataFrame(results, columns=columns)
-            st.session_state['results'] = results
-            st.session_state['csv_bytes'] = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-            st.session_state['columns'] = columns
-            st.session_state['latest_df'] = df
-        else:
-            st.warning("データが取得できませんでした。")
-    st.session_state['scraping'] = False
+        st.session_state['scraping'] = False
+        st.session_state['stop_flag'] = False
+        # 終了時に再描画
+        st.experimental_rerun()
 
 # 結果があれば常にプレビューとダウンロード・コピーボタンを表示
 def get_table_download_link(df):
