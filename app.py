@@ -71,12 +71,10 @@ if not st.session_state['scraping']:
         st.session_state['columns'] = []
         st.session_state['detail_urls'] = []
         st.session_state['latest_df'] = pd.DataFrame()
-        st.experimental_rerun()
 else:
     if stop_placeholder.button("スクレイピング終了", key="stop_btn"):
         st.session_state['stop_flag'] = True
         st.session_state['scraping'] = False
-        st.experimental_rerun()
 
 # スクレイピング本体
 if st.session_state['scraping'] and not st.session_state['stop_flag']:
@@ -133,7 +131,6 @@ if st.session_state['scraping'] and not st.session_state['stop_flag']:
             df = pd.DataFrame(results, columns=columns)
             st.session_state['latest_df'] = df
             st.session_state['csv_bytes'] = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-            st.experimental_rerun()
         if st.session_state['stop_flag']:
             progress_text.info(f"スクレイピングを中止しました。取得件数: {len(results)} / エラー: {error_count}")
         else:
