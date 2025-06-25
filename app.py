@@ -59,12 +59,20 @@ scraping = st.session_state['scraping']
 stop_flag = st.session_state['stop_flag']
 
 # ボタン表示
+start_placeholder = st.empty()
+stop_placeholder = st.empty()
+
 start_clicked = False
 stop_clicked = False
+
 if not scraping:
-    start_clicked = st.button("スクレイピング開始", key="start_btn")
+    with start_placeholder:
+        start_clicked = st.button("スクレイピング開始", key="start_btn")
+    stop_placeholder.empty()
 else:
-    stop_clicked = st.button("スクレイピング終了", key="stop_btn")
+    start_placeholder.empty()
+    with stop_placeholder:
+        stop_clicked = st.button("スクレイピング終了", key="stop_btn")
 
 # スクレイピング本体
 run_scraping = False
@@ -144,7 +152,8 @@ if run_scraping and not st.session_state['stop_flag']:
             st.session_state['columns'] = columns
             df = pd.DataFrame(results, columns=columns)
             st.session_state['latest_df'] = df
-            st.dataframe(df)
+            # 最新の表のみを1つだけ表示
+            st.dataframe(df, key="latest_result_table")
             time.sleep(random.uniform(1, 2))  # 1～2秒ランダムスリープ
         # 完了処理
         if st.session_state['stop_flag']:
@@ -153,7 +162,7 @@ if run_scraping and not st.session_state['stop_flag']:
             progress_text.success(f"スクレイピング完了！取得件数: {len(results)} / エラー: {error_count}")
         if results:
             columns = ["詳細ページURL"] + [s["name"] for s in selectors]
-            csv_bytes = results_to_csv(results, columns)
+            csv_bytes = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
             st.session_state['results'] = results
             st.session_state['csv_bytes'] = csv_bytes
             st.session_state['columns'] = columns
@@ -176,11 +185,15 @@ def copy_to_clipboard_button(df):
 # 表示
 if st.session_state.get('results', []) and st.session_state.get('columns', []):
     df = st.session_state.get('latest_df', pd.DataFrame(st.session_state['results'], columns=st.session_state['columns']))
+    # CSVバイト列がなければ生成
+    if st.session_state['csv_bytes'] is None:
+        csv_bytes = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+        st.session_state['csv_bytes'] = csv_bytes
     st.download_button("CSVダウンロード", data=st.session_state['csv_bytes'], file_name="scraping_results.csv", mime="text/csv")
     st.markdown(get_table_download_link(df), unsafe_allow_html=True)
     copy_to_clipboard_button(df)
-    # 表は1つだけ
-    st.dataframe(df)
+    # 最新の表のみを1つだけ表示
+    st.dataframe(df, key="latest_result_table")
 
 st.markdown("""
 ---
