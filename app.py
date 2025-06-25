@@ -48,14 +48,9 @@ for i in range(element_count):
         selector = st.text_input(f"CSSセレクタ{i+1}", "", key=f"selector_{i}", disabled=st.session_state.get('scraping', False))
     selectors.append({"name": name, "selector": selector, "type": "css"})
 
-# --- 開始・停止ボタンを常時2つ並べて表示 ---
-col_start, col_stop = st.columns(2)
-start_disabled = st.session_state.get('scraping', False)
-stop_disabled = not st.session_state.get('scraping', False)
-with col_start:
-    start_clicked = st.button("スクレイピング開始", disabled=start_disabled, key="start_btn")
-with col_stop:
-    stop_clicked = st.button("スクレイピング停止", disabled=stop_disabled, key="stop_btn")
+# --- ボタン切り替えスタイルで開始・停止を実装 ---
+button_label = "スクレイピング停止" if st.session_state.get('scraping', False) else "スクレイピング開始"
+button_clicked = st.button(button_label, key="main_btn")
 
 # --- UIプレースホルダ（進捗・表はボタンより下に） ---
 progress_text = st.empty()
@@ -69,15 +64,16 @@ if 'stop_flag' not in st.session_state:
     st.session_state['stop_flag'] = False
 
 # --- ボタン押下時の処理 ---
-if start_clicked and not start_disabled:
-    st.session_state['scraping'] = True
-    st.session_state['stop_flag'] = False
-    st.session_state['results'] = []
-    st.session_state['csv_bytes'] = None
-    st.session_state['columns'] = []
-    st.session_state['detail_urls'] = []
-elif stop_clicked and not stop_disabled:
-    st.session_state['stop_flag'] = True
+if button_clicked:
+    if not st.session_state['scraping']:
+        st.session_state['scraping'] = True
+        st.session_state['stop_flag'] = False
+        st.session_state['results'] = []
+        st.session_state['csv_bytes'] = None
+        st.session_state['columns'] = []
+        st.session_state['detail_urls'] = []
+    else:
+        st.session_state['stop_flag'] = True
 
 # --- スクレイピング本体 ---
 if st.session_state['scraping']:
