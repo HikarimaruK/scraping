@@ -59,8 +59,9 @@ if 'stop_flag' not in st.session_state:
     st.session_state['stop_flag'] = False
 
 # ボタンは要素入力直後に常に表示
-button_label = "スクレイピング終了" if st.session_state['scraping'] else "スクレイピング開始"
-button_clicked = st.button(button_label, key="main_btn")
+button_label = "スクレイピング終了（停止）" if st.session_state['scraping'] else "スクレイピング開始"
+button_placeholder = st.empty()
+button_clicked = button_placeholder.button(button_label, key="main_btn")
 
 # ボタン押下時の処理
 if button_clicked:
@@ -76,6 +77,10 @@ if button_clicked:
         # 終了
         st.session_state['stop_flag'] = True
         st.session_state['scraping'] = False
+    # ボタンの即時切り替えを強制的に反映
+    button_placeholder.empty()
+    button_label = "スクレイピング終了（停止）" if st.session_state['scraping'] else "スクレイピング開始"
+    button_placeholder.button(button_label, key="main_btn_force")
 
 # スクレイピング本体
 if st.session_state['scraping']:
