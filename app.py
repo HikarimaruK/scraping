@@ -66,9 +66,12 @@ if not st.session_state['scraping']:
         st.session_state['csv_bytes'] = None
         st.session_state['columns'] = []
         st.session_state['detail_urls'] = []
+        st.experimental_rerun()  # 即座に終了ボタンへ
 else:
     if stop_placeholder.button("スクレイピング終了", key="stop_btn"):
         st.session_state['stop_flag'] = True
+        st.session_state['scraping'] = False
+        st.experimental_rerun()  # 即座に開始ボタンへ
 
 # スクレイピング本体
 if st.session_state['scraping']:
@@ -79,7 +82,6 @@ if st.session_state['scraping']:
     progress_text.info("一覧ページをクロール中...（準備中）")
     for page in range(1, num_pages + 1):
         if st.session_state['stop_flag']:
-            # 準備中で中止→何も出さない
             st.session_state['scraping'] = False
             st.session_state['stop_flag'] = False
             st.session_state['results'] = []
@@ -115,6 +117,8 @@ if st.session_state['scraping']:
         progress_text.info(f"詳細ページをクロール中...（{total_detail_count}件）")
         for idx, d_url in enumerate(all_detail_urls):
             if st.session_state['stop_flag']:
+                st.session_state['scraping'] = False
+                st.session_state['stop_flag'] = False
                 break
             progress_text.markdown(f"<span style='color:green'>詳細ページ取得中: {d_url} ({idx+1}/{total_detail_count})</span>", unsafe_allow_html=True)
             d_html = fetch_detail_page(d_url)
