@@ -49,8 +49,6 @@ for i in range(element_count):
     selectors.append({"name": name, "selector": selector, "type": "css"})
 
 # UIプレースホルダ
-start_placeholder = st.empty()
-stop_placeholder = st.empty()
 progress_text = st.empty()
 progress_bar = st.empty()
 table_placeholder = st.empty()
@@ -60,84 +58,92 @@ if 'scraping' not in st.session_state:
 if 'stop_flag' not in st.session_state:
     st.session_state['stop_flag'] = False
 
-# ボタン即時切り替え・処理本体
-if not st.session_state['scraping']:
-    if st.button("スクレイピング開始"):
+# ボタンは要素入力直後に常に表示
+button_label = "スクレイピング終了" if st.session_state['scraping'] else "スクレイピング開始"
+button_clicked = st.button(button_label, key="main_btn")
+
+# ボタン押下時の処理
+if button_clicked:
+    if not st.session_state['scraping']:
+        # 開始
         st.session_state['scraping'] = True
         st.session_state['stop_flag'] = False
         st.session_state['results'] = []
         st.session_state['csv_bytes'] = None
         st.session_state['columns'] = []
         st.session_state['detail_urls'] = []
-        results = []
-        error_count = 0
-        detail_urls_set = set()
-        all_detail_urls = []
-        progress_text.info("一覧ページをクロール中...（準備中）")
-        # 並列で一覧ページ取得（stop_flagは見ない）
-        def fetch_list(page):
-            page_url = list_url.replace("<<PAGE>>", str(page))
-            return (page, fetch_list_page(page_url))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            list_results = list(executor.map(fetch_list, range(1, num_pages + 1)))
-        for page, list_html in list_results:
-            if not list_html:
-                st.warning(f"一覧ページ取得失敗: {list_url.replace('<<PAGE>>', str(page))}")
-                error_count += 1
-                continue
-            selectors_to_use = []
-            if "<<NUM>>" in detail_selector and num_range_start is not None and num_range_end is not None:
-                for n in range(int(num_range_start), int(num_range_end) + 1):
-                    selectors_to_use.append(detail_selector.replace("<<NUM>>", str(n)))
-            else:
-                selectors_to_use = [detail_selector]
-            for sel in selectors_to_use:
-                detail_urls = extract_detail_urls(list_html, sel, base_url=list_url.split("/list")[0])
-                for d_url in detail_urls:
-                    if d_url not in detail_urls_set:
-                        detail_urls_set.add(d_url)
-                        all_detail_urls.append(d_url)
-        st.session_state['detail_urls'] = all_detail_urls
-        total_detail_count = len(all_detail_urls)
-        if total_detail_count == 0:
-            progress_text.warning("詳細ページURLが取得できませんでした。条件を見直してください。")
-            st.session_state['scraping'] = False
-            st.session_state['stop_flag'] = False
-        else:
-            progress_text.info(f"詳細ページをクロール中...（{total_detail_count}件）")
-            for idx, d_url in enumerate(all_detail_urls):
-                if st.session_state['stop_flag']:
-                    st.session_state['scraping'] = False
-                    st.session_state['stop_flag'] = False
-                    break
-                progress_text.markdown(f"<span style='color:green'>詳細ページ取得中: {d_url} ({idx+1}/{total_detail_count})</span>", unsafe_allow_html=True)
-                d_html = fetch_detail_page(d_url)
-                if not d_html:
-                    st.warning(f"詳細ページ取得失敗: {d_url}")
-                    error_count += 1
-                    continue
-                elements = extract_elements(d_html, selectors)
-                row = {"詳細ページURL": d_url}
-                row.update(elements)
-                results.append(row)
-                st.session_state['results'] = results.copy()
-                columns = ["詳細ページURL"] + [s["name"] for s in selectors]
-                st.session_state['columns'] = columns
-                df = pd.DataFrame(results, columns=columns)
-                st.session_state['csv_bytes'] = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-                progress_bar.progress(min(1.0, (idx+1)/total_detail_count))
-                table_placeholder.dataframe(df, key="latest_result_table")
-                time.sleep(random.uniform(1, 2))
-            if st.session_state['stop_flag']:
-                progress_text.info(f"スクレイピングを中止しました。取得件数: {len(results)} / エラー: {error_count}")
-            else:
-                progress_text.success(f"スクレイピング完了！取得件数: {len(results)} / エラー: {error_count}")
-            st.session_state['scraping'] = False
-            st.session_state['stop_flag'] = False
-elif st.session_state['scraping']:
-    if st.button("スクレイピング終了"):
+    else:
+        # 終了
         st.session_state['stop_flag'] = True
         st.session_state['scraping'] = False
+
+# スクレイピング本体
+if st.session_state['scraping']:
+    results = []
+    error_count = 0
+    detail_urls_set = set()
+    all_detail_urls = []
+    progress_text.info("一覧ページをクロール中...（準備中）")
+    # 並列で一覧ページ取得（stop_flagは見ない）
+    def fetch_list(page):
+        page_url = list_url.replace("<<PAGE>>", str(page))
+        return (page, fetch_list_page(page_url))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        list_results = list(executor.map(fetch_list, range(1, num_pages + 1)))
+    for page, list_html in list_results:
+        if not list_html:
+            st.warning(f"一覧ページ取得失敗: {list_url.replace('<<PAGE>>', str(page))}")
+            error_count += 1
+            continue
+        selectors_to_use = []
+        if "<<NUM>>" in detail_selector and num_range_start is not None and num_range_end is not None:
+            for n in range(int(num_range_start), int(num_range_end) + 1):
+                selectors_to_use.append(detail_selector.replace("<<NUM>>", str(n)))
+        else:
+            selectors_to_use = [detail_selector]
+        for sel in selectors_to_use:
+            detail_urls = extract_detail_urls(list_html, sel, base_url=list_url.split("/list")[0])
+            for d_url in detail_urls:
+                if d_url not in detail_urls_set:
+                    detail_urls_set.add(d_url)
+                    all_detail_urls.append(d_url)
+    st.session_state['detail_urls'] = all_detail_urls
+    total_detail_count = len(all_detail_urls)
+    if total_detail_count == 0:
+        progress_text.warning("詳細ページURLが取得できませんでした。条件を見直してください。")
+        st.session_state['scraping'] = False
+        st.session_state['stop_flag'] = False
+    else:
+        progress_text.info(f"詳細ページをクロール中...（{total_detail_count}件）")
+        for idx, d_url in enumerate(all_detail_urls):
+            if st.session_state['stop_flag']:
+                st.session_state['scraping'] = False
+                st.session_state['stop_flag'] = False
+                break
+            progress_text.markdown(f"<span style='color:green'>詳細ページ取得中: {d_url} ({idx+1}/{total_detail_count})</span>", unsafe_allow_html=True)
+            d_html = fetch_detail_page(d_url)
+            if not d_html:
+                st.warning(f"詳細ページ取得失敗: {d_url}")
+                error_count += 1
+                continue
+            elements = extract_elements(d_html, selectors)
+            row = {"詳細ページURL": d_url}
+            row.update(elements)
+            results.append(row)
+            st.session_state['results'] = results.copy()
+            columns = ["詳細ページURL"] + [s["name"] for s in selectors]
+            st.session_state['columns'] = columns
+            df = pd.DataFrame(results, columns=columns)
+            st.session_state['csv_bytes'] = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+            progress_bar.progress(min(1.0, (idx+1)/total_detail_count))
+            table_placeholder.dataframe(df, key="latest_result_table")
+            time.sleep(random.uniform(1, 2))
+        if st.session_state['stop_flag']:
+            progress_text.info(f"スクレイピングを中止しました。取得件数: {len(results)} / エラー: {error_count}")
+        else:
+            progress_text.success(f"スクレイピング完了！取得件数: {len(results)} / エラー: {error_count}")
+        st.session_state['scraping'] = False
+        st.session_state['stop_flag'] = False
 
 # 結果表示
 if st.session_state.get('results', []) and st.session_state.get('columns', []):
