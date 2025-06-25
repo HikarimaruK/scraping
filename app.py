@@ -59,25 +59,33 @@ scraping = st.session_state['scraping']
 stop_flag = st.session_state['stop_flag']
 
 # ボタン表示
+start_clicked = False
+stop_clicked = False
 if not scraping:
-    if st.button("スクレイピング開始", key="start_btn"):
-        st.session_state['scraping'] = True
-        st.session_state['stop_flag'] = False
-        st.experimental_rerun()
+    start_clicked = st.button("スクレイピング開始", key="start_btn")
 else:
-    if st.button("スクレイピング終了", key="stop_btn"):
-        st.session_state['stop_flag'] = True
-        st.session_state['scraping'] = False
-        st.experimental_rerun()
+    stop_clicked = st.button("スクレイピング終了", key="stop_btn")
 
 # スクレイピング本体
-if st.session_state['scraping'] and not st.session_state['stop_flag']:
-    # 初期化
-    st.session_state['results'] = []
-    st.session_state['csv_bytes'] = None
-    st.session_state['columns'] = []
-    st.session_state['detail_urls'] = []
-    results = []
+run_scraping = False
+if start_clicked and not scraping:
+    st.session_state['scraping'] = True
+    st.session_state['stop_flag'] = False
+    run_scraping = True
+elif scraping and not stop_flag:
+    run_scraping = True
+if stop_clicked and scraping:
+    st.session_state['stop_flag'] = True
+    st.session_state['scraping'] = False
+
+if run_scraping and not st.session_state['stop_flag']:
+    # 初期化は開始時のみ
+    if start_clicked:
+        st.session_state['results'] = []
+        st.session_state['csv_bytes'] = None
+        st.session_state['columns'] = []
+        st.session_state['detail_urls'] = []
+    results = st.session_state.get('results', [])
     error_count = 0
     detail_urls_set = set()
     all_detail_urls = []
@@ -135,9 +143,7 @@ if st.session_state['scraping'] and not st.session_state['stop_flag']:
             columns = ["詳細ページURL"] + [s["name"] for s in selectors]
             st.session_state['columns'] = columns
             df = pd.DataFrame(results, columns=columns)
-            # 最新の表のみ表示
             st.session_state['latest_df'] = df
-            # 表をリアルタイムで1つだけ表示
             st.dataframe(df)
             time.sleep(random.uniform(1, 2))  # 1～2秒ランダムスリープ
         # 完了処理
