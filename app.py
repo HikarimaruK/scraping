@@ -48,25 +48,25 @@ for i in range(element_count):
         selector = st.text_input(f"CSSセレクタ{i+1}", "", key=f"selector_{i}")
     selectors.append({"name": name, "selector": selector, "type": "css"})
 
-# UIプレースホルダ
+# --- 改善1: ボタンは要素入力直後に必ず表示（進捗・表より上） ---
+button_label = "スクレイピング終了（停止）" if st.session_state.get('scraping', False) else "スクレイピング開始"
+button_clicked = st.button(button_label, key="main_btn")
+
+# --- UIプレースホルダ（進捗・表はボタンより下に） ---
 progress_text = st.empty()
 progress_bar = st.empty()
 table_placeholder = st.empty()
 
+# --- セッション状態初期化 ---
 if 'scraping' not in st.session_state:
     st.session_state['scraping'] = False
 if 'stop_flag' not in st.session_state:
     st.session_state['stop_flag'] = False
 
-# ボタンは要素入力直後に常に表示
-button_label = "スクレイピング終了（停止）" if st.session_state['scraping'] else "スクレイピング開始"
-button_placeholder = st.empty()
-button_clicked = button_placeholder.button(button_label, key="main_btn")
-
-# ボタン押下時の処理
+# --- 改善2: ボタン押下時の状態遷移を明確化 ---
 if button_clicked:
     if not st.session_state['scraping']:
-        # 開始
+        # 開始時のみスクレイピング処理を実行
         st.session_state['scraping'] = True
         st.session_state['stop_flag'] = False
         st.session_state['results'] = []
@@ -74,22 +74,16 @@ if button_clicked:
         st.session_state['columns'] = []
         st.session_state['detail_urls'] = []
     else:
-        # 終了
+        # 終了時はフラグだけ変更
         st.session_state['stop_flag'] = True
-        st.session_state['scraping'] = False
-    # ボタンの即時切り替えを強制的に反映
-    button_placeholder.empty()
-    button_label = "スクレイピング終了（停止）" if st.session_state['scraping'] else "スクレイピング開始"
-    button_placeholder.button(button_label, key="main_btn_force")
 
-# スクレイピング本体
+# --- スクレイピング本体 ---
 if st.session_state['scraping']:
     results = []
     error_count = 0
     detail_urls_set = set()
     all_detail_urls = []
     progress_text.info("一覧ページをクロール中...（準備中）")
-    # 並列で一覧ページ取得（stop_flagは見ない）
     def fetch_list(page):
         page_url = list_url.replace("<<PAGE>>", str(page))
         return (page, fetch_list_page(page_url))
@@ -150,7 +144,7 @@ if st.session_state['scraping']:
         st.session_state['scraping'] = False
         st.session_state['stop_flag'] = False
 
-# 結果表示
+# --- 結果表示 ---
 if st.session_state.get('results', []) and st.session_state.get('columns', []):
     df = pd.DataFrame(st.session_state['results'], columns=st.session_state['columns'])
     st.download_button("CSVダウンロード", data=st.session_state['csv_bytes'], file_name="scraping_results.csv", mime="text/csv")
