@@ -79,23 +79,13 @@ if st.session_state['scraping']:
     detail_urls_set = set()
     all_detail_urls = []
     progress_text.info("一覧ページをクロール中...（準備中）")
-    # 並列で一覧ページ取得
+    # 並列で一覧ページ取得（stop_flagは見ない）
     def fetch_list(page):
-        if st.session_state['stop_flag']:
-            return None
         page_url = list_url.replace("<<PAGE>>", str(page))
         return (page, fetch_list_page(page_url))
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         list_results = list(executor.map(fetch_list, range(1, num_pages + 1)))
     for page, list_html in list_results:
-        if st.session_state['stop_flag']:
-            st.session_state['scraping'] = False
-            st.session_state['stop_flag'] = False
-            st.session_state['results'] = []
-            st.session_state['csv_bytes'] = None
-            st.session_state['columns'] = []
-            st.session_state['detail_urls'] = []
-            break
         if not list_html:
             st.warning(f"一覧ページ取得失敗: {list_url.replace('<<PAGE>>', str(page))}")
             error_count += 1
