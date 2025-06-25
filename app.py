@@ -58,46 +58,34 @@ progress_bar = st.progress(0)
 start_placeholder = st.empty()
 stop_placeholder = st.empty()
 
-# 状態管理
 scraping = st.session_state['scraping']
 stop_flag = st.session_state['stop_flag']
 
-# ボタン制御
-start_clicked = False
-stop_clicked = False
-
 if not scraping:
-    with start_placeholder:
-        start_clicked = st.button("スクレイピング開始", key="start_btn")
-    stop_placeholder.empty()
+    if start_placeholder.button("スクレイピング開始", key="start_btn"):
+        st.session_state['scraping'] = True
+        st.session_state['stop_flag'] = False
+        st.session_state['results'] = []
+        st.session_state['csv_bytes'] = None
+        st.session_state['columns'] = []
+        st.session_state['detail_urls'] = []
+        st.session_state['latest_df'] = pd.DataFrame()
+        st.experimental_rerun()
 else:
-    start_placeholder.empty()
-    with stop_placeholder:
-        stop_clicked = st.button("スクレイピング終了", key="stop_btn")
-
-# スクレイピング開始
-if start_clicked and not scraping:
-    st.session_state['scraping'] = True
-    st.session_state['stop_flag'] = False
-    st.session_state['results'] = []
-    st.session_state['csv_bytes'] = None
-    st.session_state['columns'] = []
-    st.session_state['detail_urls'] = []
-    st.session_state['latest_df'] = pd.DataFrame()
-    st.experimental_rerun()
-
-# スクレイピング終了
-if stop_clicked and scraping:
-    st.session_state['stop_flag'] = True
-    st.session_state['scraping'] = False
-    st.experimental_rerun()
+    if stop_placeholder.button("スクレイピング終了", key="stop_btn"):
+        st.session_state['stop_flag'] = True
+        st.session_state['scraping'] = False
 
 # スクレイピング本体
-if scraping and not stop_flag:
+if st.session_state['scraping'] and not st.session_state['stop_flag']:
     results = []
     error_count = 0
     detail_urls_set = set()
     all_detail_urls = []
+    progress_text = st.empty()
+    progress_bar = st.empty()
+    table_placeholder = st.empty()
+
     progress_text.info("一覧ページをクロール中...（準備中）")
     for page in range(1, num_pages + 1):
         if st.session_state['stop_flag']:
@@ -123,21 +111,17 @@ if scraping and not stop_flag:
     st.session_state['detail_urls'] = all_detail_urls
     total_detail_count = len(all_detail_urls)
     if st.session_state['stop_flag']:
-        # 準備中で中止→何も出さない
         st.session_state['results'] = []
         st.session_state['csv_bytes'] = None
         st.session_state['columns'] = []
         st.session_state['latest_df'] = pd.DataFrame()
-        progress_text.info("スクレイピングを中止しました。")
         st.session_state['scraping'] = False
         st.session_state['stop_flag'] = False
-        st.experimental_rerun()
     elif total_detail_count == 0:
         progress_text.warning("詳細ページURLが取得できませんでした。条件を見直してください。")
         st.session_state['scraping'] = False
         st.session_state['stop_flag'] = False
     else:
-        # 詳細ページクロール
         results = []
         progress_text.info(f"詳細ページをクロール中...（{total_detail_count}件）")
         for idx, d_url in enumerate(all_detail_urls):
@@ -160,40 +144,21 @@ if scraping and not stop_flag:
             st.session_state['latest_df'] = df
             st.session_state['csv_bytes'] = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
             progress_bar.progress(min(1.0, (idx+1)/total_detail_count))
-            st.dataframe(df, key="latest_result_table")
+            table_placeholder.dataframe(df, key="latest_result_table")
             time.sleep(random.uniform(1, 2))
-        # 完了処理
         if st.session_state['stop_flag']:
             progress_text.info(f"スクレイピングを中止しました。取得件数: {len(results)} / エラー: {error_count}")
         else:
             progress_text.success(f"スクレイピング完了！取得件数: {len(results)} / エラー: {error_count}")
         st.session_state['scraping'] = False
         st.session_state['stop_flag'] = False
-        # 終了時に再描画
-        st.experimental_rerun()
 
-# 結果があれば常にプレビューとダウンロード・コピーボタンを表示
-def get_table_download_link(df):
-    csv = df.to_csv(index=False, sep='\t', encoding='utf-8-sig')
-    b64 = base64.b64encode(csv.encode()).decode()
-    return f'<a href="data:text/csv;base64,{b64}" download="scraping_results.tsv">コピー用TSVダウンロード</a>'
-
-def copy_to_clipboard_button(df):
-    csv = df.to_csv(index=False, sep='\t', encoding='utf-8-sig')
-    st.code(csv, language='text')
-    st.markdown("<span style='color:gray'>上記を全選択してコピーできます（Excel/スプレッドシート貼付用）</span>", unsafe_allow_html=True)
-
-# 表示
+# 結果表示
 if st.session_state.get('results', []) and st.session_state.get('columns', []):
     df = st.session_state.get('latest_df', pd.DataFrame(st.session_state['results'], columns=st.session_state['columns']))
-    # CSVバイト列がなければ生成
-    if st.session_state['csv_bytes'] is None:
-        csv_bytes = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.session_state['csv_bytes'] = csv_bytes
     st.download_button("CSVダウンロード", data=st.session_state['csv_bytes'], file_name="scraping_results.csv", mime="text/csv")
     st.markdown(get_table_download_link(df), unsafe_allow_html=True)
     copy_to_clipboard_button(df)
-    # 最新の表のみを1つだけ表示
     st.dataframe(df, key="latest_result_table")
 
 st.markdown("""
@@ -203,3 +168,13 @@ st.markdown("""
 - 詳細ページURL抽出用CSSセレクタで `<<NUM>>` を使うと、繰り返し部分の番号を変数化できます。
 - 各要素のCSSセレクタも、繰り返し部分やパターンに応じて `nth-child(<<NUM>>)` などで柔軟に指定できます。
 """)
+
+def get_table_download_link(df):
+    csv = df.to_csv(index=False, sep='\t', encoding='utf-8-sig')
+    b64 = base64.b64encode(csv.encode()).decode()
+    return f'<a href="data:text/csv;base64,{b64}" download="scraping_results.tsv">コピー用TSVダウンロード</a>'
+
+def copy_to_clipboard_button(df):
+    csv = df.to_csv(index=False, sep='\t', encoding='utf-8-sig')
+    st.code(csv, language='text')
+    st.markdown("<span style='color:gray'>上記を全選択してコピーできます（Excel/スプレッドシート貼付用）</span>", unsafe_allow_html=True)
