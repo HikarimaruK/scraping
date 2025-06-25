@@ -62,42 +62,28 @@ stop_flag = st.session_state['stop_flag']
 start_placeholder = st.empty()
 stop_placeholder = st.empty()
 
-start_clicked = False
-stop_clicked = False
-
-if not scraping:
-    with start_placeholder:
-        start_clicked = st.button("スクレイピング開始", key="start_btn")
-    stop_placeholder.empty()
-else:
-    start_placeholder.empty()
-    with stop_placeholder:
-        stop_clicked = st.button("スクレイピング終了", key="stop_btn")
-
-# スクレイピング本体
-run_scraping = False
-if start_clicked and not scraping:
-    st.session_state['scraping'] = True
-    st.session_state['stop_flag'] = False
-    run_scraping = True
-elif scraping and not stop_flag:
-    run_scraping = True
-if stop_clicked and scraping:
-    st.session_state['stop_flag'] = True
-    st.session_state['scraping'] = False
-
-if run_scraping and not st.session_state['stop_flag']:
-    # 初期化は開始時のみ
-    if start_clicked:
+if not st.session_state['scraping']:
+    if start_placeholder.button("スクレイピング開始", key="start_btn"):
+        st.session_state['scraping'] = True
+        st.session_state['stop_flag'] = False
         st.session_state['results'] = []
         st.session_state['csv_bytes'] = None
         st.session_state['columns'] = []
         st.session_state['detail_urls'] = []
+        st.session_state['latest_df'] = pd.DataFrame()
+        st.experimental_rerun()
+else:
+    if stop_placeholder.button("スクレイピング終了", key="stop_btn"):
+        st.session_state['stop_flag'] = True
+        st.session_state['scraping'] = False
+        st.experimental_rerun()
+
+# スクレイピング本体
+if st.session_state['scraping'] and not st.session_state['stop_flag']:
     results = st.session_state.get('results', [])
     error_count = 0
     detail_urls_set = set()
     all_detail_urls = []
-    # 1. 一覧ページ全取得→詳細URLリスト作成
     progress_text.info("一覧ページをクロール中...（準備中）")
     for page in range(1, num_pages + 1):
         if st.session_state['stop_flag']:
@@ -108,14 +94,12 @@ if run_scraping and not st.session_state['stop_flag']:
             st.warning(f"一覧ページ取得失敗: {page_url}")
             error_count += 1
             continue
-        # セレクタ生成
         selectors_to_use = []
         if "<<NUM>>" in detail_selector and num_range_start is not None and num_range_end is not None:
             for n in range(int(num_range_start), int(num_range_end) + 1):
                 selectors_to_use.append(detail_selector.replace("<<NUM>>", str(n)))
         else:
             selectors_to_use = [detail_selector]
-        # 各セレクタで詳細URL抽出
         for sel in selectors_to_use:
             detail_urls = extract_detail_urls(list_html, sel, base_url=page_url.split("/list")[0])
             for d_url in detail_urls:
@@ -129,7 +113,6 @@ if run_scraping and not st.session_state['stop_flag']:
     elif total_detail_count == 0:
         progress_text.warning("詳細ページURLが取得できませんでした。条件を見直してください。")
     else:
-        # 2. 詳細ページ一括クロール
         progress_text.info(f"詳細ページをクロール中...（{total_detail_count}件）")
         for idx, d_url in enumerate(all_detail_urls):
             if st.session_state['stop_flag']:
@@ -144,29 +127,24 @@ if run_scraping and not st.session_state['stop_flag']:
             row = {"詳細ページURL": d_url}
             row.update(elements)
             results.append(row)
-            # 進捗バー更新
-            progress_bar.progress(min(1.0, (idx+1)/total_detail_count))
-            # 結果を即時反映
             st.session_state['results'] = results.copy()
             columns = ["詳細ページURL"] + [s["name"] for s in selectors]
             st.session_state['columns'] = columns
             df = pd.DataFrame(results, columns=columns)
             st.session_state['latest_df'] = df
-            # 最新の表のみを1つだけ表示
-            st.dataframe(df, key="latest_result_table")
-            time.sleep(random.uniform(1, 2))  # 1～2秒ランダムスリープ
-        # 完了処理
+            st.session_state['csv_bytes'] = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+            st.experimental_rerun()
         if st.session_state['stop_flag']:
             progress_text.info(f"スクレイピングを中止しました。取得件数: {len(results)} / エラー: {error_count}")
         else:
             progress_text.success(f"スクレイピング完了！取得件数: {len(results)} / エラー: {error_count}")
         if results:
             columns = ["詳細ページURL"] + [s["name"] for s in selectors]
-            csv_bytes = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+            df = pd.DataFrame(results, columns=columns)
             st.session_state['results'] = results
-            st.session_state['csv_bytes'] = csv_bytes
+            st.session_state['csv_bytes'] = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
             st.session_state['columns'] = columns
-            st.session_state['latest_df'] = pd.DataFrame(results, columns=columns)
+            st.session_state['latest_df'] = df
         else:
             st.warning("データが取得できませんでした。")
     st.session_state['scraping'] = False
