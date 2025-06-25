@@ -43,14 +43,19 @@ selectors = []
 for i in range(element_count):
     col1, col2 = st.columns([3, 7])
     with col1:
-        name = st.text_input(f"要素名{i+1}", f"要素{i+1}", key=f"name_{i}")
+        name = st.text_input(f"要素名{i+1}", f"要素{i+1}", key=f"name_{i}", disabled=st.session_state.get('scraping', False))
     with col2:
-        selector = st.text_input(f"CSSセレクタ{i+1}", "", key=f"selector_{i}")
+        selector = st.text_input(f"CSSセレクタ{i+1}", "", key=f"selector_{i}", disabled=st.session_state.get('scraping', False))
     selectors.append({"name": name, "selector": selector, "type": "css"})
 
-# --- 改善1: ボタンは要素入力直後に必ず表示（進捗・表より上） ---
-button_label = "スクレイピング終了（停止）" if st.session_state.get('scraping', False) else "スクレイピング開始"
-button_clicked = st.button(button_label, key="main_btn")
+# --- 開始・停止ボタンを常時2つ並べて表示 ---
+col_start, col_stop = st.columns(2)
+start_disabled = st.session_state.get('scraping', False)
+stop_disabled = not st.session_state.get('scraping', False)
+with col_start:
+    start_clicked = st.button("スクレイピング開始", disabled=start_disabled, key="start_btn")
+with col_stop:
+    stop_clicked = st.button("スクレイピング停止", disabled=stop_disabled, key="stop_btn")
 
 # --- UIプレースホルダ（進捗・表はボタンより下に） ---
 progress_text = st.empty()
@@ -63,19 +68,16 @@ if 'scraping' not in st.session_state:
 if 'stop_flag' not in st.session_state:
     st.session_state['stop_flag'] = False
 
-# --- 改善2: ボタン押下時の状態遷移を明確化 ---
-if button_clicked:
-    if not st.session_state['scraping']:
-        # 開始時のみスクレイピング処理を実行
-        st.session_state['scraping'] = True
-        st.session_state['stop_flag'] = False
-        st.session_state['results'] = []
-        st.session_state['csv_bytes'] = None
-        st.session_state['columns'] = []
-        st.session_state['detail_urls'] = []
-    else:
-        # 終了時はフラグだけ変更
-        st.session_state['stop_flag'] = True
+# --- ボタン押下時の処理 ---
+if start_clicked and not start_disabled:
+    st.session_state['scraping'] = True
+    st.session_state['stop_flag'] = False
+    st.session_state['results'] = []
+    st.session_state['csv_bytes'] = None
+    st.session_state['columns'] = []
+    st.session_state['detail_urls'] = []
+elif stop_clicked and not stop_disabled:
+    st.session_state['stop_flag'] = True
 
 # --- スクレイピング本体 ---
 if st.session_state['scraping']:
